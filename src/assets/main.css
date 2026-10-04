@@ -1,0 +1,68 @@
+@import './base.css';
+
+:root {
+  /* palette */
+  --maroon: #4c0505; /* Maroon Acai */
+  --pink: #f9d5f7; /* Pastel Pink */
+  --blue: #bdd4fe; /* Pastel Blue */
+  --cream: #fff4e0; /* Pastel Cream (placeholder, see note) */
+
+  /* tints derived from the palette */
+  --card: color-mix(in srgb, var(--pink) 14%, var(--maroon));
+  --cell: color-mix(in srgb, var(--pink) 22%, var(--maroon));
+  --button: color-mix(in srgb, var(--pink) 10%, var(--maroon));
+  --button-border: color-mix(in srgb, var(--pink) 20%, transparent);
+  --muted: color-mix(in srgb, var(--cream) 72%, transparent);
+
+  color: var(--cream);
+  background: var(--maroon);
+  font-family: 'Courier New', Courier, monospace;
+  line-height: 1.5;
+  font-weight: 400;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#app {
+  margin: 0;
+  min-width: 100%;
+  min-height: 100%;
+}
+
+/* maroon paper background: flat colour + fine grain */
+body {
+  min-height: 100vh;
+  background:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='240' height='240'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 0.9 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.07'/%3E%3C/svg%3E"),
+    var(--maroon);
+  -webkit-tap-highlight-color: transparent;
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}
+
+button {
+  padding: 0;
+}
+
+/* manual override for the "Reduce motion" setting, on top of the OS-level media query */
+html.reduce-motion *,
+html.reduce-motion *::before,
+html.reduce-motion *::after {
+  animation-duration: 0.001ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.001ms !important;
+  scroll-behavior: auto !important;
+}
