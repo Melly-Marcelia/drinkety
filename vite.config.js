@@ -6,10 +6,11 @@ import vueDevTools from 'vite-plugin-vue-devtools'
 
 // https://vite.dev/config/
 export default defineConfig({
-  plugins: [
-    vue(),
-    vueDevTools(),
-  ],
+  plugins: [vue(), vueDevTools()],
+  // the sticker maker's worker loads the model runtime with dynamic imports
+  worker: {
+    format: 'es',
+  },
   resolve: {
     alias: {
       '@': fileURLToPath(new URL('./src', import.meta.url)),

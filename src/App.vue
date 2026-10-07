@@ -249,6 +249,7 @@ const nowTime = () => `${pad(new Date().getHours())}:${pad(new Date().getMinutes
 
 function addDrink({
   image,
+  sticker,
   date,
   time,
   flavour,
@@ -261,8 +262,10 @@ function addDrink({
   favourite,
 }) {
   fallStyles[date] = fallStyle(0.4) // wait for the sheet to slide away first
+  // the die-cut sticker goes on the calendar; without one the photo is shown instead
   entries[date] = {
-    image,
+    image: sticker || image,
+    photo: image,
     time,
     flavour,
     type,
@@ -272,7 +275,7 @@ function addDrink({
     country,
     notes,
     favourite,
-    isPhoto: true,
+    isPhoto: !sticker,
   }
   addedPhotos.value.push({ image, name, date })
   if (name) recentNames.value = [name, ...recentNames.value.filter((n) => n !== name)].slice(0, 5)

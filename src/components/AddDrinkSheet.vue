@@ -1,6 +1,7 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { DRINK_TYPES, FLAVOURS } from '../data/drinkTypes'
+import { makeSticker, warmUpStickerMaker } from '../utils/makeSticker'
 import DateTimePicker from './DateTimePicker.vue'
 
 const props = defineProps({
@@ -12,6 +13,9 @@ const props = defineProps({
 const emit = defineEmits(['close', 'save'])
 
 const image = ref(null) // object URL of the captured / picked photo
+const sticker = ref(null) // object URL of the die-cut sticker made from it
+const stickerState = ref('idle') // 'idle' | 'making' | 'ready' | 'failed'
+const useSticker = ref(true) // the sticker can be swapped back for the plain photo
 const dateTime = ref(props.defaultDateTime)
 const shop = ref('')
 const city = ref('')
@@ -31,8 +35,12 @@ let stream = null
 let saved = false
 let gone = false
 let typeTouched = false
+let stickerRun = 0 // a retake makes any sticker still being cut out stale
 
-const canSave = computed(() => Boolean(image.value && dateTime.value))
+const canSave = computed(() =>
+  Boolean(image.value && dateTime.value && stickerState.value !== 'making'),
+)
+const showSticker = computed(() => stickerState.value === 'ready' && useSticker.value)
 
 const dateLabel = computed(() =>
   dateTime.value
@@ -81,10 +89,36 @@ function stopCamera() {
   stream = null
 }
 
-function setImage(url) {
+function setImage(url, blob) {
   if (image.value) URL.revokeObjectURL(image.value)
   image.value = url
   stopCamera()
+  startSticker(blob)
+}
+
+function clearSticker() {
+  stickerRun++
+  if (sticker.value) URL.revokeObjectURL(sticker.value)
+  sticker.value = null
+  stickerState.value = 'idle'
+  useSticker.value = true
+}
+
+// cut the drink out of the photo; if that fails the plain photo is saved instead
+async function startSticker(blob) {
+  clearSticker()
+  const run = stickerRun
+  stickerState.value = 'making'
+  // let the photo and the scan animation show up before the heavy work starts
+  await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))
+  try {
+    const result = await makeSticker(blob)
+    if (run !== stickerRun || gone) return
+    sticker.value = URL.createObjectURL(result)
+    stickerState.value = 'ready'
+  } catch {
+    if (run === stickerRun) stickerState.value = 'failed'
+  }
 }
 
 function flip() {
@@ -116,7 +150,7 @@ function capture() {
       canvas.width,
       canvas.height,
     )
-  canvas.toBlob((blob) => blob && setImage(URL.createObjectURL(blob)), 'image/jpeg', 0.9)
+  canvas.toBlob((blob) => blob && setImage(URL.createObjectURL(blob), blob), 'image/jpeg', 0.9)
 }
 
 function onShutter() {
@@ -124,6 +158,7 @@ function onShutter() {
     // retake
     URL.revokeObjectURL(image.value)
     image.value = null
+    clearSticker()
     startCamera()
   } else if (camera.value === 'live') {
     capture()
@@ -135,7 +170,7 @@ function onShutter() {
 
 function onPick(event) {
   const file = event.target.files?.[0]
-  if (file) setImage(URL.createObjectURL(file))
+  if (file) setImage(URL.createObjectURL(file), file)
   event.target.value = '' // lets the same file be picked again
 }
 
@@ -155,6 +190,7 @@ function save() {
   const [date, time] = dateTime.value.split('T')
   emit('save', {
     image: image.value,
+    sticker: showSticker.value ? sticker.value : null,
     date,
     time,
     flavour: flavour.value,
@@ -167,12 +203,16 @@ function save() {
   })
 }
 
-onMounted(startCamera)
+onMounted(() => {
+  startCamera()
+  warmUpStickerMaker()
+})
 onBeforeUnmount(() => {
   gone = true
   stopCamera()
-  // a photo that was never saved is not needed any more
+  // a photo or sticker that was never saved is not needed any more
   if (!saved && image.value) URL.revokeObjectURL(image.value)
+  if (sticker.value && !(saved && useSticker.value)) URL.revokeObjectURL(sticker.value)
 })
 </script>
 
@@ -182,6 +222,22 @@ onBeforeUnmount(() => {
       <div ref="frame" class="viewfinder">
         <video v-show="camera === 'live' && !image" ref="video" autoplay playsinline muted></video>
         <img v-if="image" class="shot" :src="image" alt="Your drink" />
+
+        <!-- the sticker maker: scans the photo, then the cut-out pops up on top of it -->
+        <div
+          v-if="image && stickerState !== 'idle'"
+          class="maker"
+          :class="{ 'is-shown': showSticker }"
+        >
+          <span v-if="stickerState === 'making'" class="scan" aria-hidden="true"></span>
+          <img v-if="showSticker" class="made" :src="sticker" alt="Your drink as a sticker" />
+          <span v-if="stickerState === 'making'" class="status" role="status">
+            Making your sticker…
+          </span>
+          <span v-else-if="stickerState === 'failed'" class="status" role="status">
+            Couldn't cut it out, the photo is used
+          </span>
+        </div>
 
         <div v-if="!image && camera !== 'live'" class="guide">
           <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -250,7 +306,19 @@ onBeforeUnmount(() => {
             </svg>
           </button>
 
+          <!-- once the sticker is made, the flip slot swaps between sticker and plain photo -->
           <button
+            v-if="stickerState === 'ready'"
+            class="flip swap"
+            type="button"
+            :aria-pressed="useSticker"
+            :aria-label="useSticker ? 'Use the photo instead' : 'Use the sticker'"
+            @click="useSticker = !useSticker"
+          >
+            {{ useSticker ? 'Photo' : 'Sticker' }}
+          </button>
+          <button
+            v-else
             class="flip"
             type="button"
             aria-label="Flip camera"
@@ -618,6 +686,89 @@ onBeforeUnmount(() => {
   font-weight: 700;
   white-space: nowrap;
   transform: translateX(-50%);
+}
+
+/* ---- sticker maker ---- */
+.maker {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  transition:
+    background 0.35s ease,
+    backdrop-filter 0.35s ease;
+}
+
+.maker.is-shown {
+  background: rgb(40 8 8 / 0.55);
+  backdrop-filter: blur(6px);
+}
+
+/* a soft band of light sweeping over the photo while the drink is cut out */
+.scan {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+}
+
+.scan::before {
+  content: '';
+  position: absolute;
+  inset: -30% 0 auto;
+  height: 30%;
+  background: linear-gradient(
+    transparent,
+    color-mix(in srgb, var(--pink) 45%, transparent) 70%,
+    var(--cream) 96%,
+    transparent
+  );
+  animation: scan 1.3s ease-in-out infinite;
+}
+
+@keyframes scan {
+  to {
+    transform: translateY(440%);
+  }
+}
+
+.made {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  height: 64%;
+  aspect-ratio: 1;
+  filter: drop-shadow(0 8px 14px rgb(0 0 0 / 0.4));
+  transform: translate(-50%, -46%) rotate(-4deg);
+  animation: peel 0.6s cubic-bezier(0.2, 0.9, 0.3, 1.3);
+}
+
+@keyframes peel {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -40%) scale(0.6) rotate(-14deg);
+  }
+}
+
+.status {
+  position: absolute;
+  bottom: 106px;
+  left: 50%;
+  padding: 6px 14px;
+  border: 0;
+  border-radius: 999px;
+  background: rgb(0 0 0 / 0.45);
+  color: var(--cream);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+  transform: translateX(-50%);
+}
+
+.swap {
+  width: 64px;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
 }
 
 /* gallery / shutter / flip, on the bottom edge of the photo */
